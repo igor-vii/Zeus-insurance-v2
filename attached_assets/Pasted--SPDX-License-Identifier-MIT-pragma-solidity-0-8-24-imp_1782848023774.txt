@@ -1,0 +1,85 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
+
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "./IInsuranceContract.sol";
+
+contract ZeusReserve is ReentrancyGuard, Ownable {
+    IERC20 public usdc;
+    address public insuranceContract;
+
+    uint256 public maxDailyPayout;
+    uint256 public minReserveThreshold;
+    uint256 public dailyPayouts;
+    uint256 public lastResetDay;
+
+    mapping(uint256 => bool) public fulfilledClaims;
+
+    event ReserveDeposited(address indexed from, uint256 amount);
+    event ClaimPaid(uint256 indexed claimId, address indexed claimant, uint256 amount);
+    event ReserveWithdrawn(address indexed to, uint256 amount);
+    event InsuranceContractUpdated(address newContract);
+
+    modifier onlyInsurance() {
+        require(msg.sender == insuranceContract, "Not insurance contract");
+        _;
+    }
+
+    constructor(address _usdc) {
+        usdc = IERC20(_usdc);
+        maxDailyPayout = 1000 * 10**6; // 1000 USDC (6 decimals)
+        minReserveThreshold = 100 * 10**6; // 100 USDC
+    }
+
+    function setInsuranceContract(address _contract) external onlyOwner {
+        require(_contract.code.length > 0, "Not a contract");
+        insuranceContract = _contract;
+        emit InsuranceContractUpdated(_contract);
+    }
+
+    function deposit(uint256 amount) external nonReentrant {
+        require(amount > 0, "Amount must be > 0");
+        require(usdc.transferFrom(msg.sender, address(this), amount), "Transfer failed");
+        emit ReserveDeposited(msg.sender, amount);
+    }
+
+    function payClaim(uint256 claimId, address claimant, uint256 amount) external onlyInsurance nonReentrant {
+        require(amount > 0, "Amount must be > 0");
+        require(!fulfilledClaims[claimId], "Claim already fulfilled");
+
+        uint256 balance = usdc.balanceOf(address(this));
+        require(balance >= amount, "Insufficient reserve");
+        require(balance - amount >= minReserveThreshold, "Reserve below threshold");
+
+        uint256 today = block.timestamp / 1 days;
+        if (lastResetDay != today) {
+            dailyPayouts = 0;
+            lastResetDay = today;
+        }
+        require(dailyPayouts + amount <= maxDailyPayout, "Daily payout limit exceeded");
+
+        IInsuranceContract insurance = IInsuranceContract(insuranceContract);
+        require(insurance.isClaimApproved(claimId, claimant, amount), "Claim not approved");
+
+        dailyPayouts += amount;
+        fulfilledClaims[claimId] = true;
+
+        require(usdc.transfer(claimant, amount), "Transfer failed");
+        emit ClaimPaid(claimId, claimant, amount);
+    }
+
+    function withdraw(uint256 amount) external onlyOwner nonReentrant {
+        require(amount > 0, "Amount must be > 0");
+        uint256 balance = usdc.balanceOf(address(this));
+        require(balance >= amount, "Insufficient reserve");
+        require(balance - amount >= minReserveThreshold, "Reserve below threshold");
+        require(usdc.transfer(msg.sender, amount), "Transfer failed");
+        emit ReserveWithdrawn(msg.sender, amount);
+    }
+
+    function getReserveBalance() external view returns (uint256) {
+        return usdc.balanceOf(address(this));
+    }
+}

@@ -1,0 +1,99 @@
+cat > contracts/ZeusInsuranceV2.sol << 'EOF'
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
+
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "./ZeusReserve.sol";
+
+contract ZeusInsuranceV2 is ReentrancyGuard, Ownable {
+    IERC20 public usdc;
+    ZeusReserve public reserve;
+
+    struct Policy {
+        address buyer;
+        address seller;
+        uint256 amount;
+        uint256 premium;
+        uint256 retryDeadline;
+        uint256 maxRetries;
+        bool isActive;
+        bool isPaidOut;
+        bool isExpired;
+    }
+
+    mapping(uint256 => Policy) public policies;
+    uint256 public nextPolicyId;
+
+    event PolicyCreated(uint256 indexed policyId, address indexed buyer, address indexed seller, uint256 amount, uint256 premium, uint256 retryDeadline);
+    event PayoutExecuted(uint256 indexed policyId, uint256 amount);
+    event PolicyExpired(uint256 indexed policyId);
+
+    constructor(address _usdc, address _reserve) {
+        usdc = IERC20(_usdc);
+        reserve = ZeusReserve(_reserve);
+    }
+
+    function buyInsurance(
+        address seller,
+        uint256 amount,
+        uint256 timeoutSeconds,
+        uint256 maxRetries
+    ) external nonReentrant {
+        require(seller != address(0), "Invalid seller");
+        require(amount > 0, "Amount must be > 0");
+        require(maxRetries > 0 && maxRetries <= 10, "Invalid retries");
+        require(timeoutSeconds > 0, "Timeout must be > 0");
+
+        uint256 premiumBps = 700 + (maxRetries - 1) * 200;
+        uint256 premium = (amount * premiumBps) / 10000;
+
+        // Премия переводится в резервный контракт
+        require(usdc.transferFrom(msg.sender, address(reserve), premium), "Premium transfer failed");
+
+        uint256 retryDeadline = block.timestamp + timeoutSeconds * maxRetries;
+
+        policies[nextPolicyId] = Policy({
+            buyer: msg.sender,
+            seller: seller,
+            amount: amount,
+            premium: premium,
+            retryDeadline: retryDeadline,
+            maxRetries: maxRetries,
+            isActive: true,
+            isPaidOut: false,
+            isExpired: false
+        });
+
+        emit PolicyCreated(nextPolicyId, msg.sender, seller, amount, premium, retryDeadline);
+        nextPolicyId++;
+    }
+
+    function claimPayout(uint256 policyId) external nonReentrant {
+        Policy storage p = policies[policyId];
+        require(p.buyer == msg.sender, "Only buyer can claim");
+        require(p.isActive, "Policy not active");
+        require(!p.isPaidOut, "Already paid out");
+        require(!p.isExpired, "Policy expired");
+        require(block.timestamp >= p.retryDeadline, "Timeout not yet reached");
+
+        uint256 payoutAmount = p.amount;
+        p.isPaidOut = true;
+        p.isActive = false;
+
+        // Выплата через резервный контракт
+        reserve.executePayout(policyId, payoutAmount);
+
+        emit PayoutExecuted(policyId, payoutAmount);
+    }
+
+    function setReserve(address _reserve) external onlyOwner {
+        reserve = ZeusReserve(_reserve);
+    }
+
+    function getPolicy(uint256 policyId) external view returns (Policy memory) {
+        return policies[policyId];
+    }
+}
+EOF

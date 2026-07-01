@@ -1,0 +1,11 @@
+# Hardhat
+artifacts/
+cache/
+typechain-types/
+dist/
+
+# Environment — never commit private keys
+.env
+
+# Node
+node_modules/
