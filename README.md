@@ -46,7 +46,7 @@ This ensures that the protocol remains solvent and can handle multiple claims wi
 
 🚀 Getting Started
 1. Clone the repository
-git clone https://github.com/igor-vii/zeus-insurance.git
+git clone https://git clone https://github.com/igor-vii/Zeus-insurance-v2.git
 cd zeus-insurance
 2. Install dependencies
 bash
@@ -123,7 +123,7 @@ Create a branch for your feature.
 
 Submit a Pull Request.
 
-🤝 Контакты
+🤝 Contacts
 GitHub: igor-vii/zeus-insurance
 
 Telegram: @IvanovVII
