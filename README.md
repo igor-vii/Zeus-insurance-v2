@@ -128,7 +128,7 @@ GitHub: igor-vii/zeus-insurance
 
 Telegram: @IvanovVII
 
-Website: https://zeus-insurance--zeusinsurance.replit.app
+Website: https://zip-repl--ringostar2022.replit.app
 
 zeusinsurance@mail.ru
 
