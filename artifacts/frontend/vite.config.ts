@@ -2,7 +2,6 @@ import path from 'path';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
-
 import runtimeErrorOverlay from '@replit/vite-plugin-runtime-error-modal';
 
 // Определяем, запущена ли сборка в продакшн-среде (Netlify)
@@ -74,11 +73,6 @@ export default defineConfig({
     },
   },
   preview: {
-    port,
-    host: '0.0.0.0',
-    allowedHosts: true,
-  },
-});
     port,
     host: '0.0.0.0',
     allowedHosts: true,
