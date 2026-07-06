@@ -83,6 +83,13 @@ export function fetchPrepareClaim(policyId: string): Promise<ClaimResult> {
   return apiFetch("/claim", { method: "POST", body: JSON.stringify({ policyId }) });
 }
 
+// ─── Health ──────────────────────────────────────────────────────────────────
+export type HealthResult = { status: string };
+
+export function fetchHealth(): Promise<HealthResult> {
+  return apiFetch("/healthz");
+}
+
 // ─── Reserve ─────────────────────────────────────────────────────────────────
 export type ReserveStats = {
   balance: string;

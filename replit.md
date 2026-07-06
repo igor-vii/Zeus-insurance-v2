@@ -1,64 +1,134 @@
-# Zeus Reserve — Smart Contract Project
+# Zeus Insurance — Decentralized Insurance Protocol
 
-A Hardhat project for Solidity smart contracts targeting Base Sepolia. Contains the `ZeusReserve` reserve contract and its integration interface with an existing insurance contract.
-
-## Run & Operate
-
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-
-### Contracts (`contracts/`)
-
-- `pnpm --filter @workspace/contracts run compile` — compile Solidity contracts
-- `pnpm --filter @workspace/contracts run test` — run Hardhat tests (local in-process network)
-- `pnpm --filter @workspace/contracts run deploy:baseSepolia` — deploy to Base Sepolia
-- `pnpm --filter @workspace/contracts run verify <address> <args>` — verify on Basescan
-
-## Stack
-
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
-- Smart contracts: Hardhat 2, Solidity 0.8.27, OpenZeppelin 5, ethers v6
-
-## Where things live
-
-- `contracts/contracts/ZeusReserve.sol` — main reserve contract
-- `contracts/contracts/interfaces/IInsuranceContract.sol` — interface your existing insurance contract must implement
-- `contracts/contracts/test/MockInsurance.sol` — mock used in unit tests only
-- `contracts/scripts/deploy.ts` — deployment script for Base Sepolia
-- `contracts/test/ZeusReserve.test.ts` — full test suite
-- `contracts/hardhat.config.ts` — Hardhat config (networks, etherscan, typechain)
-- `contracts/.env.example` — template for required env vars
-
-## Architecture decisions
-
-- **CEI pattern in payClaim**: funds are transferred before `markClaimFulfilled` is called to prevent reentrancy, combined with `ReentrancyGuard` for belt-and-suspenders safety.
-- **Interface-based insurance integration**: `IInsuranceContract` decouples `ZeusReserve` from any specific insurance implementation; drop-in the interface on the existing contract.
-- **Only insurance contract can trigger payouts**: `payClaim` reverts unless `msg.sender == insuranceContract`, so no external actor can drain the reserve.
-- **Soft minimum reserve**: `minimumReserve` is informational — readable on-chain but not enforced — to avoid blocking payouts when reserves run low unexpectedly.
-
-## Product
-
-ZeusReserve is a collateralised reserve pool for the Zeus insurance protocol. It holds ETH and releases funds only when an approved insurance claim is verified and triggered by the registered insurance contract.
+A full-stack dApp for protecting AI agent-to-agent payments on **Base Sepolia**. Buyers pay a small premium to insure an API call; if the seller fails to deliver within the timeout, the protocol automatically pays out from the reserve fund.
 
 ## User preferences
 
 _Populate as you build — explicit user instructions worth remembering across sessions._
 
+---
+
+## Run & Operate
+
+```bash
+# Start both services (already configured as Replit workflows)
+PORT=8080 pnpm --filter @workspace/api-server run dev   # API server on :8080
+PORT=5173 BASE_PATH=/ pnpm --filter @workspace/frontend run dev  # Frontend on :5173
+
+# Workspace-wide commands
+pnpm run typecheck       # full typecheck across all packages
+pnpm run build           # typecheck + build all packages
+
+# Contracts
+pnpm --filter @workspace/contracts run compile          # compile Solidity
+pnpm --filter @workspace/contracts run test             # run Hardhat tests
+pnpm --filter @workspace/contracts run deploy:baseSepolia  # deploy to Base Sepolia
+```
+
+---
+
+## Deployed Contracts (Base Sepolia)
+
+| Contract          | Address                                      |
+|-------------------|----------------------------------------------|
+| ZeusInsuranceV2   | `0xE0b89E0DEa7Fc7AEa7CEcC62a0A14d52de42Ce3b` |
+| ZeusReserveV2     | `0xF5010Afe1856be1F447f962Dfa8AA30c2Ed19a47` |
+| USDC (Base Sepolia) | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
+
+Get testnet ETH: <https://www.coinbase.com/faucets/base-ethereum-sepolia-faucet>
+
+---
+
+## API Mode
+
+The frontend supports two data-source modes, switchable via the toggle in the sidebar footer (or mobile header):
+
+| Mode       | How it works |
+|------------|--------------|
+| **Direct** (default) | All reads and writes go straight to Base Sepolia via wagmi/viem in the browser |
+| **API**    | The frontend calls the Express API server (`:8080`), which multicalls the chain and returns ABI-encoded calldata. The frontend still signs and broadcasts transactions locally — no private keys on the server |
+
+The mode is persisted to `localStorage` (key `zeus_api_mode`). A coloured dot next to the toggle shows live API reachability: green = healthy, yellow = checking, red = unreachable.
+
+### API Endpoints (base URL: `http://localhost:8080/api`)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET`  | `/healthz` | Health check — returns `{ "status": "ok" }` |
+| `GET`  | `/api/quote?amount=&maxRetries=` | Compute premium without sending a transaction |
+| `POST` | `/api/prepare-buy` | Returns `{ to, data }` calldata to call `buyInsurance` |
+| `GET`  | `/api/policies?buyer=` | Fetch all policies for an address (event log + multicall) |
+| `GET`  | `/api/policies/:id` | Fetch a single policy by ID |
+| `POST` | `/api/claim` | Returns `{ to, data }` calldata to call `claimPayout` |
+| `GET`  | `/api/reserve` | Fetch reserve stats (balance, thresholds, daily limits) |
+
+**Example — get a quote:**
+```bash
+curl "http://localhost:8080/api/quote?amount=100000000&maxRetries=3"
+# {"premiumBps":1100,"premiumAmount":"11000000","totalCost":"11000000"}
+```
+
+**Example — prepare a buy (returns calldata for the frontend to sign):**
+```bash
+curl -X POST http://localhost:8080/api/prepare-buy \
+  -H "Content-Type: application/json" \
+  -d '{"seller":"0xSELLER","amount":"100000000","timeoutSeconds":86400,"maxRetries":1}'
+# {"to":"0xE0b89E...","data":"0x...","premiumAmount":"7000000"}
+```
+
+---
+
+## Netlify Deploy
+
+A `netlify.toml` is included at the repo root. To deploy the frontend:
+
+1. Connect the repo to Netlify.
+2. Netlify auto-detects the build config (`publish = artifacts/frontend/dist/public`).
+3. Set the environment variable **`VITE_API_BASE_URL`** to your deployed API server URL (e.g. `https://zeus-api.example.com/api`). If left unset, the frontend defaults to `/api` (same-origin proxy).
+4. Deploy. Netlify handles SPA routing via the `[[redirects]]` rule.
+
+---
+
+## Stack
+
+- **Frontend**: React 19, Vite, Tailwind CSS, wagmi v3, viem v2, Shadcn/UI, TanStack Query
+- **API Server**: Express 5, viem (multicall), Zod validation, pino logging
+- **Contracts**: Solidity 0.8.27, Hardhat 2, OpenZeppelin 5
+- **Monorepo**: pnpm workspaces, Node.js 24, TypeScript 5.9
+
+## Where things live
+
+```
+artifacts/
+  frontend/          React + Vite app
+    src/
+      lib/
+        contracts.ts   ABIs + Base Sepolia addresses
+        wagmi.ts       wagmi config (baseSepolia chain)
+        api-mode.tsx   API/Direct mode context + hook
+        api-client.ts  Typed API call functions
+      components/
+        api-mode-toggle.tsx  Toggle + live health dot
+        layout.tsx           Sidebar + mobile nav
+      pages/
+        buy.tsx        Buy policy (dual mode)
+        policies.tsx   My policies + claim (dual mode)
+        reserve.tsx    Reserve stats + deposit (dual mode)
+  api-server/        Express API server (port 8080)
+    src/
+      lib/
+        chain.ts       viem public client (baseSepolia)
+        contracts-server.ts  ABIs + addresses for server use
+      routes/
+        insurance.ts   All /api/* endpoints
+        health.ts      GET /healthz
+contracts/             Hardhat + Solidity sources
+netlify.toml           Netlify static deploy config
+```
+
 ## Gotchas
 
-- **Always compile before testing**: `pnpm --filter @workspace/contracts run compile` first if typechain types are stale.
-- **Impersonation in tests**: `hardhat_impersonateAccount` is used to simulate calls from the mock insurance contract address — this is a Hardhat-network-only feature and only runs locally.
-- **Base Sepolia faucets**: Get test ETH at https://www.coinbase.com/faucets/base-ethereum-sepolia-faucet
-- Required env: `PRIVATE_KEY`, optional `BASE_SEPOLIA_RPC_URL` (defaults to `https://sepolia.base.org`), `BASESCAN_API_KEY` for verification.
-
-## Pointers
-
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+- **Chain**: Everything targets **Base Sepolia** (chain ID 84532). MetaMask must be on Base Sepolia.
+- **USDC on Base Sepolia** is `0x036CbD53842c5426634e7929541eC2318f3dCF7e` — different from mainnet.
+- **API mode calldata**: The server only encodes calldata. It never holds private keys or broadcasts transactions.
+- **pnpm install before build**: Netlify runs `pnpm install` as part of the build command in `netlify.toml`.

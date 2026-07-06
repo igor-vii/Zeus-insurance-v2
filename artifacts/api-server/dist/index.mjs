@@ -28374,7 +28374,7 @@ var require_pino = __commonJS({
         messageKey,
         errorKey,
         nestedKey,
-        base: base2,
+        base,
         name,
         level,
         customLevels,
@@ -28413,11 +28413,11 @@ var require_pino = __commonJS({
         [formattersSym]: allFormatters
       });
       let chindings = "";
-      if (base2 !== null) {
+      if (base !== null) {
         if (name === void 0) {
-          chindings = coreChindings(base2);
+          chindings = coreChindings(base);
         } else {
-          chindings = coreChindings(Object.assign({}, base2, { name }));
+          chindings = coreChindings(Object.assign({}, base, { name }));
         }
       }
       const time2 = timestamp instanceof Function ? timestamp : timestamp ? epochTime : nullTime;
@@ -34129,15 +34129,15 @@ function wNAF(c, bits) {
       const { windows, windowSize } = calcWOpts(W, bits);
       const points = [];
       let p = elm;
-      let base2 = p;
+      let base = p;
       for (let window2 = 0; window2 < windows; window2++) {
-        base2 = p;
-        points.push(base2);
+        base = p;
+        points.push(base);
         for (let i = 1; i < windowSize; i++) {
-          base2 = base2.add(p);
-          points.push(base2);
+          base = base.add(p);
+          points.push(base);
         }
-        p = base2.double();
+        p = base.double();
       }
       return points;
     },
@@ -38207,17 +38207,17 @@ async function call(client, args) {
       }
     }
     const params = (() => {
-      const base2 = [
+      const base = [
         request,
         block
       ];
       if (rpcStateOverride && rpcBlockOverrides)
-        return [...base2, rpcStateOverride, rpcBlockOverrides];
+        return [...base, rpcStateOverride, rpcBlockOverrides];
       if (rpcStateOverride)
-        return [...base2, rpcStateOverride];
+        return [...base, rpcStateOverride];
       if (rpcBlockOverrides)
-        return [...base2, {}, rpcBlockOverrides];
-      return base2;
+        return [...base, {}, rpcBlockOverrides];
+      return base;
     })();
     const response = await client.request({
       method: "eth_call",
@@ -42057,23 +42057,23 @@ var ZodEffects = class extends ZodType {
     }
     if (effect.type === "transform") {
       if (ctx.common.async === false) {
-        const base2 = this._def.schema._parseSync({
+        const base = this._def.schema._parseSync({
           data: ctx.data,
           path: ctx.path,
           parent: ctx
         });
-        if (!isValid(base2))
+        if (!isValid(base))
           return INVALID;
-        const result = effect.transform(base2.value, checkCtx);
+        const result = effect.transform(base.value, checkCtx);
         if (result instanceof Promise) {
           throw new Error(`Asynchronous transform encountered during synchronous parse operation. Use .parseAsync instead.`);
         }
         return { status: status.value, value: result };
       } else {
-        return this._def.schema._parseAsync({ data: ctx.data, path: ctx.path, parent: ctx }).then((base2) => {
-          if (!isValid(base2))
+        return this._def.schema._parseAsync({ data: ctx.data, path: ctx.path, parent: ctx }).then((base) => {
+          if (!isValid(base))
             return INVALID;
-          return Promise.resolve(effect.transform(base2.value, checkCtx)).then((result) => ({
+          return Promise.resolve(effect.transform(base.value, checkCtx)).then((result) => ({
             status: status.value,
             value: result
           }));
@@ -43100,7 +43100,7 @@ async function internal_estimateFeesPerGas(client, args) {
     throw new BaseFeeScalarError();
   const decimals = baseFeeMultiplier.toString().split(".")[1]?.length ?? 0;
   const denominator = 10 ** decimals;
-  const multiply = (base2) => base2 * BigInt(Math.ceil(baseFeeMultiplier * denominator)) / BigInt(denominator);
+  const multiply = (base) => base * BigInt(Math.ceil(baseFeeMultiplier * denominator)) / BigInt(denominator);
   const block = block_ ? block_ : await getAction(client, getBlock, "getBlock")({});
   if (typeof chain?.fees?.estimateFeesPerGas === "function") {
     const fees = await chain.fees.estimateFeesPerGas({
@@ -43468,7 +43468,7 @@ async function fillTransaction(client, parameters) {
       throw new BaseFeeScalarError();
     const decimals = feeMultiplier.toString().split(".")[1]?.length ?? 0;
     const denominator = 10 ** decimals;
-    const multiplyFee = (base2) => base2 * BigInt(Math.ceil(feeMultiplier * denominator)) / BigInt(denominator);
+    const multiplyFee = (base) => base * BigInt(Math.ceil(feeMultiplier * denominator)) / BigInt(denominator);
     if (!transaction.feePayerSignature) {
       if (transaction.maxFeePerGas && !parameters.maxFeePerGas)
         transaction.maxFeePerGas = multiplyFee(transaction.maxFeePerGas);
@@ -44681,14 +44681,14 @@ function createClient(parameters) {
     uid: uid(),
     ...experimental_blockTag ? { experimental_blockTag } : {}
   };
-  function extend(base2) {
+  function extend(base) {
     return (extendFn) => {
-      const extended = extendFn(base2);
+      const extended = extendFn(base);
       for (const key2 in client)
         delete extended[key2];
-      const combined = { ...base2, ...extended };
+      const combined = { ...base, ...extended };
       for (const key2 in extended) {
-        const a = base2[key2];
+        const a = base[key2];
         const b = extended[key2];
         if (isPlainObject(a) && isPlainObject(b))
           combined[key2] = { ...a, ...b };
@@ -46220,10 +46220,10 @@ function defineChain(chain) {
     serializers: void 0,
     ...chain
   };
-  function extend(base2) {
+  function extend(base) {
     return (fnOrExtended) => {
-      const properties = typeof fnOrExtended === "function" ? fnOrExtended(base2) : fnOrExtended;
-      const combined = { ...base2, ...properties };
+      const properties = typeof fnOrExtended === "function" ? fnOrExtended(base) : fnOrExtended;
+      const combined = { ...base, ...properties };
       return Object.assign(combined, { extend: extend(combined) });
     };
   }
@@ -46525,9 +46525,9 @@ function validateTypedData(parameters) {
       const value = data[name];
       const integerMatch = type.match(integerRegex2);
       if (integerMatch && (typeof value === "number" || typeof value === "bigint")) {
-        const [_type, base2, size_] = integerMatch;
+        const [_type, base, size_] = integerMatch;
         numberToHex(value, {
-          signed: base2 === "int",
+          signed: base === "int",
           size: Number.parseInt(size_, 10) / 8
         });
       }
@@ -50761,70 +50761,72 @@ var chainConfig = {
   serializers
 };
 
-// ../../node_modules/.pnpm/viem@2.54.3_typescript@5.9.3_zod@3.25.76/node_modules/viem/_esm/chains/definitions/base.js
-var sourceId = 1;
-var base = /* @__PURE__ */ defineChain({
+// ../../node_modules/.pnpm/viem@2.54.3_typescript@5.9.3_zod@3.25.76/node_modules/viem/_esm/chains/definitions/baseSepolia.js
+var sourceId = 11155111;
+var baseSepolia = /* @__PURE__ */ defineChain({
   ...chainConfig,
-  id: 8453,
-  name: "Base",
-  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+  id: 84532,
+  network: "base-sepolia",
+  name: "Base Sepolia",
+  nativeCurrency: { name: "Sepolia Ether", symbol: "ETH", decimals: 18 },
   rpcUrls: {
     default: {
-      http: ["https://mainnet.base.org"]
+      http: ["https://sepolia.base.org"]
     }
   },
   blockExplorers: {
     default: {
       name: "Basescan",
-      url: "https://basescan.org",
-      apiUrl: "https://api.basescan.org/api"
+      url: "https://sepolia.basescan.org",
+      apiUrl: "https://api-sepolia.basescan.org/api"
     }
   },
   contracts: {
     ...chainConfig.contracts,
     disputeGameFactory: {
       [sourceId]: {
-        address: "0x43edB88C4B80fDD2AdFF2412A7BebF9dF42cB40e"
+        address: "0xd6E6dBf4F7EA0ac412fD8b65ED297e64BB7a06E1"
       }
     },
     l2OutputOracle: {
       [sourceId]: {
-        address: "0x56315b90c40730925ec5485cf004d835058518A0"
+        address: "0x84457ca9D0163FbC4bbfe4Dfbb20ba46e48DF254"
       }
-    },
-    multicall3: {
-      address: "0xca11bde05977b3631167028862be2a173976ca11",
-      blockCreated: 5022
     },
     portal: {
       [sourceId]: {
-        address: "0x49048044D57e1C92A77f79988d21Fa8fAF74E97e",
-        blockCreated: 17482143
+        address: "0x49f53e41452c74589e85ca1677426ba426459e85",
+        blockCreated: 4446677
       }
     },
     l1StandardBridge: {
       [sourceId]: {
-        address: "0x3154Cf16ccdb4C6d922629664174b904d80F2C35",
-        blockCreated: 17482143
+        address: "0xfd0Bf71F60660E2f608ed56e1659C450eB113120",
+        blockCreated: 4446677
       }
+    },
+    multicall3: {
+      address: "0xca11bde05977b3631167028862be2a173976ca11",
+      blockCreated: 1059647
     }
   },
+  testnet: true,
   sourceId
 });
-var basePreconf = /* @__PURE__ */ defineChain({
-  ...base,
+var baseSepoliaPreconf = /* @__PURE__ */ defineChain({
+  ...baseSepolia,
   experimental_preconfirmationTime: 200,
   rpcUrls: {
     default: {
-      http: ["https://mainnet-preconf.base.org"]
+      http: ["https://sepolia-preconf.base.org"]
     }
   }
 });
 
 // src/lib/chain.ts
 var publicClient = createPublicClient({
-  chain: base,
-  transport: http("https://mainnet.base.org")
+  chain: baseSepolia,
+  transport: http("https://sepolia.base.org")
 });
 
 // src/lib/contracts-server.ts

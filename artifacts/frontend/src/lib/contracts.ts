@@ -1,13 +1,13 @@
-// ─── Deployed contract addresses (Base mainnet) ──────────────────────────────
+// ─── Deployed contract addresses (Base Sepolia testnet) ──────────────────────
 export const ZEUS_INSURANCE_ADDRESS =
   "0xE0b89E0DEa7Fc7AEa7CEcC62a0A14d52de42Ce3b" as const;
 
 export const ZEUS_RESERVE_ADDRESS =
   "0xF5010Afe1856be1F447f962Dfa8AA30c2Ed19a47" as const;
 
-// USDC on Base mainnet (6 decimals)
+// USDC on Base Sepolia (6 decimals) — 0x036CbD53842c5426634e7929541eC2318f3dCF7e
 export const USDC_ADDRESS =
-  "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" as const;
+  "0x036CbD53842c5426634e7929541eC2318f3dCF7e" as const;
 
 // ─── ZeusInsuranceV2 ABI ─────────────────────────────────────────────────────
 export const ZEUS_INSURANCE_ABI = [

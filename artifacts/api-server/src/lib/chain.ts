@@ -1,8 +1,8 @@
 import { createPublicClient, http } from "viem";
-import { base } from "viem/chains";
+import { baseSepolia } from "viem/chains";
 
-/** Shared viem public client — Base mainnet, public RPC */
+/** Shared viem public client — Base Sepolia testnet */
 export const publicClient = createPublicClient({
-  chain: base,
-  transport: http("https://mainnet.base.org"),
+  chain: baseSepolia,
+  transport: http("https://sepolia.base.org"),
 });

@@ -1,4 +1,4 @@
-// ─── Deployed addresses (Base mainnet) ───────────────────────────────────────
+// ─── Deployed addresses (Base Sepolia testnet) ───────────────────────────────
 export const ZEUS_INSURANCE_ADDRESS =
   "0xE0b89E0DEa7Fc7AEa7CEcC62a0A14d52de42Ce3b" as const;
 

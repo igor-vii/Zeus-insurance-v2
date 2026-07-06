@@ -1,0 +1,16 @@
+[build]
+  command = "pnpm install && PORT=5173 BASE_PATH=/ pnpm --filter @workspace/frontend run build"
+  publish = "artifacts/frontend/dist/public"
+
+[build.environment]
+  NODE_VERSION  = "20"
+  PNPM_VERSION  = "10"
+  PORT          = "5173"
+  BASE_PATH     = "/"
+  # Set VITE_API_BASE_URL to your deployed API server URL, e.g.:
+  # VITE_API_BASE_URL = "https://your-api-server.example.com/api"
+
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200
