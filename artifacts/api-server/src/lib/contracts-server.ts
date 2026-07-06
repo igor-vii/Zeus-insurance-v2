@@ -7,6 +7,7 @@ export const ZEUS_RESERVE_ADDRESS =
 
 // ─── ZeusInsuranceV2 ABI (subset used by server) ─────────────────────────────
 export const ZEUS_INSURANCE_ABI = [
+  // ── Functions ────────────────────────────────────────────────────────────────
   {
     inputs: [
       { internalType: "address", name: "seller", type: "address" },
@@ -49,6 +50,30 @@ export const ZEUS_INSURANCE_ABI = [
     ],
     stateMutability: "view",
     type: "function",
+  },
+  // ── Events ────────────────────────────────────────────────────────────────────
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true,  internalType: "uint256", name: "policyId",      type: "uint256" },
+      { indexed: true,  internalType: "address", name: "buyer",         type: "address" },
+      { indexed: true,  internalType: "address", name: "seller",        type: "address" },
+      { indexed: false, internalType: "uint256", name: "amount",        type: "uint256" },
+      { indexed: false, internalType: "uint256", name: "premium",       type: "uint256" },
+      { indexed: false, internalType: "uint256", name: "retryDeadline", type: "uint256" },
+    ],
+    name: "PolicyCreated",
+    type: "event",
+  },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true,  internalType: "uint256", name: "policyId", type: "uint256" },
+      { indexed: true,  internalType: "address", name: "buyer",    type: "address" },
+      { indexed: false, internalType: "uint256", name: "amount",   type: "uint256" },
+    ],
+    name: "ClaimPaid",
+    type: "event",
   },
 ] as const;
 

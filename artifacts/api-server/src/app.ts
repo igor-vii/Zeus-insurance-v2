@@ -4,6 +4,7 @@ import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { startBackgroundSync } from "./lib/background-sync";
+import { startEventListener } from "./lib/event-listener";
 
 const app: Express = express();
 
@@ -40,7 +41,7 @@ app.use(
       if (!origin) return callback(null, true);
       if (allowedOrigins.has(origin)) return callback(null, true);
       // Also allow any *.replit.app / *.repl.co subdomain for deployed previews
-      if (/^https:\/\/[^.]+\.(replit\.app|repl\.co)$/.test(origin)) {
+      if (/^https:\/\/[^.]+\.(replit\.app|repl\.co|netlify\.app)$/.test(origin)) {
         return callback(null, true);
       }
       callback(new Error(`CORS: origin not allowed — ${origin}`));
@@ -55,5 +56,8 @@ app.use("/api", router);
 
 // Start the 5-minute background sync scheduler
 startBackgroundSync();
+
+// Start on-chain event listener (disable with ENABLE_EVENT_LISTENER=false)
+startEventListener();
 
 export default app;

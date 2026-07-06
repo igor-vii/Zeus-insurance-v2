@@ -25311,7 +25311,7 @@ var require_atomic_sleep = __commonJS({
   "../../node_modules/.pnpm/atomic-sleep@1.0.0/node_modules/atomic-sleep/index.js"(exports, module) {
     "use strict";
     if (typeof SharedArrayBuffer !== "undefined" && typeof Atomics !== "undefined") {
-      let sleep = function(ms) {
+      let sleep2 = function(ms) {
         const valid = ms > 0 && ms < Infinity;
         if (valid === false) {
           if (typeof ms !== "number" && typeof ms !== "bigint") {
@@ -25322,9 +25322,9 @@ var require_atomic_sleep = __commonJS({
         Atomics.wait(nil, 0, 0, Number(ms));
       };
       const nil = new Int32Array(new SharedArrayBuffer(4));
-      module.exports = sleep;
+      module.exports = sleep2;
     } else {
-      let sleep = function(ms) {
+      let sleep2 = function(ms) {
         const valid = ms > 0 && ms < Infinity;
         if (valid === false) {
           if (typeof ms !== "number" && typeof ms !== "bigint") {
@@ -25336,7 +25336,7 @@ var require_atomic_sleep = __commonJS({
         while (target > Date.now()) {
         }
       };
-      module.exports = sleep;
+      module.exports = sleep2;
     }
   }
 });
@@ -25349,7 +25349,7 @@ var require_sonic_boom = __commonJS({
     var EventEmitter = __require("events");
     var inherits = __require("util").inherits;
     var path = __require("path");
-    var sleep = require_atomic_sleep();
+    var sleep2 = require_atomic_sleep();
     var assert8 = __require("assert");
     var BUSY_WRITE_TIMEOUT = 100;
     var kEmptyBuffer = Buffer.allocUnsafe(0);
@@ -25495,7 +25495,7 @@ var require_sonic_boom = __commonJS({
           if ((err.code === "EAGAIN" || err.code === "EBUSY") && this.retryEAGAIN(err, this._writingBuf.length, this._len - this._writingBuf.length)) {
             if (this.sync) {
               try {
-                sleep(BUSY_WRITE_TIMEOUT);
+                sleep2(BUSY_WRITE_TIMEOUT);
                 this.release(void 0, 0);
               } catch (err2) {
                 this.release(err2);
@@ -25808,7 +25808,7 @@ var require_sonic_boom = __commonJS({
           if (shouldRetry2 && !this.retryEAGAIN(err, buf.length, this._len - buf.length)) {
             throw err;
           }
-          sleep(BUSY_WRITE_TIMEOUT);
+          sleep2(BUSY_WRITE_TIMEOUT);
         }
       }
       try {
@@ -25845,7 +25845,7 @@ var require_sonic_boom = __commonJS({
           if (shouldRetry2 && !this.retryEAGAIN(err, buf.length, this._len - buf.length)) {
             throw err;
           }
-          sleep(BUSY_WRITE_TIMEOUT);
+          sleep2(BUSY_WRITE_TIMEOUT);
         }
       }
     }
@@ -26098,7 +26098,7 @@ var require_wait = __commonJS({
         return;
       }
       let prior = current;
-      const check = (backoff) => {
+      const check = (backoff2) => {
         if (Date.now() > max) {
           done(null, "timed-out");
         } else {
@@ -26106,12 +26106,12 @@ var require_wait = __commonJS({
             prior = current;
             current = Atomics.load(state, index3);
             if (current === prior) {
-              check(backoff >= MAX_TIMEOUT ? MAX_TIMEOUT : backoff * 2);
+              check(backoff2 >= MAX_TIMEOUT ? MAX_TIMEOUT : backoff2 * 2);
             } else {
               if (current === expected) done(null, "ok");
               else done(null, "not-equal");
             }
-          }, backoff);
+          }, backoff2);
         }
       };
       check(1);
@@ -26123,7 +26123,7 @@ var require_wait = __commonJS({
         done(null, "ok");
         return;
       }
-      const check = (backoff) => {
+      const check = (backoff2) => {
         if (Date.now() > max) {
           done(null, "timed-out");
         } else {
@@ -26132,9 +26132,9 @@ var require_wait = __commonJS({
             if (current !== expected) {
               done(null, "ok");
             } else {
-              check(backoff >= MAX_TIMEOUT ? MAX_TIMEOUT : backoff * 2);
+              check(backoff2 >= MAX_TIMEOUT ? MAX_TIMEOUT : backoff2 * 2);
             }
-          }, backoff);
+          }, backoff2);
         }
       };
       check(1);
@@ -26586,7 +26586,7 @@ var require_transport = __commonJS({
     var { createRequire } = __require("module");
     var getCallers = require_caller();
     var { join, isAbsolute, sep } = __require("node:path");
-    var sleep = require_atomic_sleep();
+    var sleep2 = require_atomic_sleep();
     var onExit = require_on_exit_leak_free();
     var ThreadStream = require_thread_stream();
     function setupOnExit(stream) {
@@ -26620,7 +26620,7 @@ var require_transport = __commonJS({
           return;
         }
         stream.flushSync();
-        sleep(100);
+        sleep2(100);
         stream.end();
       }
       return stream;
@@ -50833,6 +50833,7 @@ var publicClient = createPublicClient({
 var ZEUS_INSURANCE_ADDRESS = "0xE0b89E0DEa7Fc7AEa7CEcC62a0A14d52de42Ce3b";
 var ZEUS_RESERVE_ADDRESS = "0xF5010Afe1856be1F447f962Dfa8AA30c2Ed19a47";
 var ZEUS_INSURANCE_ABI = [
+  // ── Functions ────────────────────────────────────────────────────────────────
   {
     inputs: [
       { internalType: "address", name: "seller", type: "address" },
@@ -50875,6 +50876,30 @@ var ZEUS_INSURANCE_ABI = [
     ],
     stateMutability: "view",
     type: "function"
+  },
+  // ── Events ────────────────────────────────────────────────────────────────────
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, internalType: "uint256", name: "policyId", type: "uint256" },
+      { indexed: true, internalType: "address", name: "buyer", type: "address" },
+      { indexed: true, internalType: "address", name: "seller", type: "address" },
+      { indexed: false, internalType: "uint256", name: "amount", type: "uint256" },
+      { indexed: false, internalType: "uint256", name: "premium", type: "uint256" },
+      { indexed: false, internalType: "uint256", name: "retryDeadline", type: "uint256" }
+    ],
+    name: "PolicyCreated",
+    type: "event"
+  },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, internalType: "uint256", name: "policyId", type: "uint256" },
+      { indexed: true, internalType: "address", name: "buyer", type: "address" },
+      { indexed: false, internalType: "uint256", name: "amount", type: "uint256" }
+    ],
+    name: "ClaimPaid",
+    type: "event"
   }
 ];
 var ZEUS_RESERVE_ABI = [
@@ -58367,6 +58392,97 @@ router3.use(health_default);
 router3.use(insurance_default);
 var routes_default = router3;
 
+// src/lib/event-listener.ts
+var POLL_INTERVAL_MS = 4e3;
+var BACKOFF_MS = [1e3, 5e3, 15e3, 3e4, 6e4];
+var EVENT_POLICY_CREATED = parseAbiItem(
+  "event PolicyCreated(uint256 indexed policyId, address indexed buyer, address indexed seller, uint256 amount, uint256 premium, uint256 retryDeadline)"
+);
+var EVENT_CLAIM_PAID = parseAbiItem(
+  "event ClaimPaid(uint256 indexed policyId, address indexed buyer, uint256 amount)"
+);
+function backoff(attempt) {
+  return BACKOFF_MS[Math.min(attempt, BACKOFF_MS.length - 1)];
+}
+function handlePolicyCreated(logs) {
+  for (const log of logs) {
+    const policyId = log.args?.policyId?.toString();
+    if (!policyId) continue;
+    logger.info({ policyId }, "[event] PolicyCreated \u2014 caching new policy");
+    void fetchAndCachePolicy(policyId);
+  }
+}
+function handleClaimPaid(logs) {
+  for (const log of logs) {
+    const policyId = log.args?.policyId?.toString();
+    if (!policyId) continue;
+    logger.info({ policyId }, "[event] ClaimPaid \u2014 invalidating cache");
+    void invalidatePolicy(policyId);
+    setTimeout(() => void fetchAndCachePolicy(policyId), 2e3);
+  }
+}
+async function runPoller(signal) {
+  let fromBlock = null;
+  let errorAttempt = 0;
+  while (!signal.stopped) {
+    try {
+      const latestBlock = await publicClient.getBlockNumber();
+      if (fromBlock === null) {
+        fromBlock = latestBlock;
+        logger.info({ fromBlock: fromBlock.toString() }, "[event] poller initialised");
+        await sleep(POLL_INTERVAL_MS);
+        continue;
+      }
+      if (latestBlock >= fromBlock) {
+        const toBlock = latestBlock;
+        const [createdLogs, claimLogs] = await Promise.all([
+          publicClient.getLogs({
+            address: ZEUS_INSURANCE_ADDRESS,
+            event: EVENT_POLICY_CREATED,
+            fromBlock,
+            toBlock
+          }),
+          publicClient.getLogs({
+            address: ZEUS_INSURANCE_ADDRESS,
+            event: EVENT_CLAIM_PAID,
+            fromBlock,
+            toBlock
+          })
+        ]);
+        if (createdLogs.length) handlePolicyCreated(createdLogs);
+        if (claimLogs.length) handleClaimPaid(claimLogs);
+        fromBlock = toBlock + 1n;
+        errorAttempt = 0;
+      }
+      await sleep(POLL_INTERVAL_MS);
+    } catch (err) {
+      const delayMs = backoff(errorAttempt++);
+      logger.warn({ err, delayMs, attempt: errorAttempt }, "[event] poll error \u2014 retrying");
+      await sleep(delayMs);
+    }
+  }
+}
+function startEventListener() {
+  if (process.env.ENABLE_EVENT_LISTENER === "false") {
+    logger.info("[event] listener disabled via ENABLE_EVENT_LISTENER=false");
+    return () => {
+    };
+  }
+  const signal = { stopped: false };
+  void runPoller(signal);
+  logger.info(
+    { pollIntervalMs: POLL_INTERVAL_MS },
+    "[event] listener active \u2014 polling PolicyCreated + ClaimPaid"
+  );
+  return () => {
+    signal.stopped = true;
+    logger.info("[event] listener stopped");
+  };
+}
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 // src/app.ts
 var app = (0, import_express4.default)();
 app.use(
@@ -58399,7 +58515,7 @@ app.use(
     origin(origin, callback) {
       if (!origin) return callback(null, true);
       if (allowedOrigins.has(origin)) return callback(null, true);
-      if (/^https:\/\/[^.]+\.(replit\.app|repl\.co)$/.test(origin)) {
+      if (/^https:\/\/[^.]+\.(replit\.app|repl\.co|netlify\.app)$/.test(origin)) {
         return callback(null, true);
       }
       callback(new Error(`CORS: origin not allowed \u2014 ${origin}`));
@@ -58411,6 +58527,7 @@ app.use(import_express4.default.json());
 app.use(import_express4.default.urlencoded({ extended: true }));
 app.use("/api", routes_default);
 startBackgroundSync();
+startEventListener();
 var app_default = app;
 
 // src/index.ts
