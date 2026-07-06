@@ -9,6 +9,13 @@ import {
   ZEUS_RESERVE_ABI,
   computePremium,
 } from "../lib/contracts-server.js";
+import {
+  getCachedPolicies,
+  getCachedPolicy,
+  upsertPolicies,
+  invalidatePolicy,
+  type CachedPolicy,
+} from "../lib/policy-cache.js";
 
 const router = Router();
 
@@ -58,7 +65,64 @@ router.post("/prepare-buy", (req, res) => {
   res.json({ to: ZEUS_INSURANCE_ADDRESS, data, premiumAmount: premiumAmount.toString() });
 });
 
-// ─── GET /api/policies?buyer= ────────────────────────────────────────────────
+// ─── Shared: fetch policies from chain and populate cache ────────────────────
+async function fetchPoliciesFromChain(buyer: string): Promise<CachedPolicy[]> {
+  const logs = await publicClient.getLogs({
+    address: ZEUS_INSURANCE_ADDRESS,
+    event: parseAbiItem(
+      "event PolicyCreated(uint256 indexed policyId, address indexed buyer, address indexed seller, uint256 amount, uint256 premium, uint256 retryDeadline)",
+    ),
+    args: { buyer: buyer as `0x${string}` },
+    fromBlock: 0n,
+  });
+
+  const ids = [
+    ...new Set(
+      logs.map((l) => l.args.policyId).filter((id): id is bigint => id !== undefined),
+    ),
+  ].sort((a, b) => (b > a ? 1 : -1));
+
+  if (ids.length === 0) return [];
+
+  const results = await publicClient.multicall({
+    contracts: ids.map((id) => ({
+      address: ZEUS_INSURANCE_ADDRESS,
+      abi: ZEUS_INSURANCE_ABI,
+      functionName: "getPolicy" as const,
+      args: [id] as const,
+    })),
+  });
+
+  const policies: CachedPolicy[] = [];
+  for (let i = 0; i < ids.length; i++) {
+    const r = results[i];
+    if (r.status !== "success") continue;
+    const p = r.result as {
+      buyer: string; seller: string; amount: bigint; premium: bigint;
+      retryDeadline: bigint; maxRetries: bigint;
+      isActive: boolean; isPaidOut: boolean; isExpired: boolean;
+    };
+    policies.push({
+      id: ids[i].toString(),
+      buyer: p.buyer,
+      seller: p.seller,
+      amount: p.amount.toString(),
+      premium: p.premium.toString(),
+      retryDeadline: p.retryDeadline.toString(),
+      maxRetries: p.maxRetries.toString(),
+      isActive: p.isActive,
+      isPaidOut: p.isPaidOut,
+      isExpired: p.isExpired,
+    });
+  }
+
+  // Fire-and-forget cache write
+  void upsertPolicies(policies);
+
+  return policies;
+}
+
+// ─── GET /api/policies?buyer= ─────────────────────────────────────────────────
 const policiesQuerySchema = z.object({
   buyer: z.string().refine(isAddress, "Invalid buyer address"),
 });
@@ -71,61 +135,17 @@ router.get("/policies", async (req, res) => {
   }
   const { buyer } = parsed.data;
 
+  // Try cache first
+  const cached = await getCachedPolicies(buyer);
+  if (cached !== null) {
+    res.json({ policies: cached, source: "cache" });
+    return;
+  }
+
+  // Cache miss or stale — fetch from chain
   try {
-    const logs = await publicClient.getLogs({
-      address: ZEUS_INSURANCE_ADDRESS,
-      event: parseAbiItem(
-        "event PolicyCreated(uint256 indexed policyId, address indexed buyer, address indexed seller, uint256 amount, uint256 premium, uint256 retryDeadline)",
-      ),
-      args: { buyer: buyer as `0x${string}` },
-      fromBlock: 0n,
-    });
-
-    const ids = [
-      ...new Set(
-        logs.map((l) => l.args.policyId).filter((id): id is bigint => id !== undefined),
-      ),
-    ].sort((a, b) => (b > a ? 1 : -1)); // newest first
-
-    if (ids.length === 0) {
-      res.json({ policies: [] });
-      return;
-    }
-
-    const results = await publicClient.multicall({
-      contracts: ids.map((id) => ({
-        address: ZEUS_INSURANCE_ADDRESS,
-        abi: ZEUS_INSURANCE_ABI,
-        functionName: "getPolicy" as const,
-        args: [id] as const,
-      })),
-    });
-
-    const policies = ids
-      .map((id, i) => {
-        const r = results[i];
-        if (r.status !== "success") return null;
-        const p = r.result as {
-          buyer: string; seller: string; amount: bigint; premium: bigint;
-          retryDeadline: bigint; maxRetries: bigint;
-          isActive: boolean; isPaidOut: boolean; isExpired: boolean;
-        };
-        return {
-          id: id.toString(),
-          buyer: p.buyer,
-          seller: p.seller,
-          amount: p.amount.toString(),
-          premium: p.premium.toString(),
-          retryDeadline: p.retryDeadline.toString(),
-          maxRetries: p.maxRetries.toString(),
-          isActive: p.isActive,
-          isPaidOut: p.isPaidOut,
-          isExpired: p.isExpired,
-        };
-      })
-      .filter(Boolean);
-
-    res.json({ policies });
+    const policies = await fetchPoliciesFromChain(buyer);
+    res.json({ policies, source: "chain" });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     res.status(502).json({ error: "Failed to fetch policies from chain", detail: msg });
@@ -140,6 +160,14 @@ router.get("/policies/:id", async (req, res) => {
     return;
   }
 
+  // Try cache first
+  const cached = await getCachedPolicy(idStr);
+  if (cached !== null) {
+    res.json({ policy: cached, source: "cache" });
+    return;
+  }
+
+  // Cache miss or stale — fetch from chain
   try {
     const p = (await publicClient.readContract({
       address: ZEUS_INSURANCE_ADDRESS,
@@ -152,43 +180,50 @@ router.get("/policies/:id", async (req, res) => {
       isActive: boolean; isPaidOut: boolean; isExpired: boolean;
     };
 
-    res.json({
-      policy: {
-        id: idStr,
-        buyer: p.buyer,
-        seller: p.seller,
-        amount: p.amount.toString(),
-        premium: p.premium.toString(),
-        retryDeadline: p.retryDeadline.toString(),
-        maxRetries: p.maxRetries.toString(),
-        isActive: p.isActive,
-        isPaidOut: p.isPaidOut,
-        isExpired: p.isExpired,
-      },
-    });
+    const policy: CachedPolicy = {
+      id: idStr,
+      buyer: p.buyer,
+      seller: p.seller,
+      amount: p.amount.toString(),
+      premium: p.premium.toString(),
+      retryDeadline: p.retryDeadline.toString(),
+      maxRetries: p.maxRetries.toString(),
+      isActive: p.isActive,
+      isPaidOut: p.isPaidOut,
+      isExpired: p.isExpired,
+    };
+
+    void upsertPolicies([policy]);
+    res.json({ policy, source: "chain" });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     res.status(502).json({ error: "Failed to fetch policy from chain", detail: msg });
   }
 });
 
-// ─── POST /api/claim ─────────────────────────────────────────────────────────
+// ─── POST /api/claim ──────────────────────────────────────────────────────────
 const claimSchema = z.object({
   policyId: z.string().regex(/^\d+$/, "policyId must be a non-negative integer string"),
 });
 
-router.post("/claim", (req, res) => {
+router.post("/claim", async (req, res) => {
   const parsed = claimSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
 
+  const { policyId } = parsed.data;
+
   const data = encodeFunctionData({
     abi: ZEUS_INSURANCE_ABI,
     functionName: "claimPayout",
-    args: [BigInt(parsed.data.policyId)],
+    args: [BigInt(policyId)],
   });
+
+  // Invalidate this policy in cache — the tx will change isPaidOut;
+  // next GET /api/policies will re-sync its status from chain.
+  void invalidatePolicy(policyId);
 
   res.json({ to: ZEUS_INSURANCE_ADDRESS, data });
 });

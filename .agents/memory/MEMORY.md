@@ -1,0 +1,1 @@
+- [pg-esbuild-external](pg-esbuild-external.md) — `pg` must be both in build.mjs externals AND in api-server's package.json deps or Node can't find it at runtime.
