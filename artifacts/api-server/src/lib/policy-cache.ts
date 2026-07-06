@@ -4,6 +4,8 @@ import { eq, sql } from "drizzle-orm";
 import { policiesTable } from "@workspace/db/schema";
 import { logger } from "./logger.js";
 
+export { policiesTable };
+
 const CACHE_TTL_MS = 30_000;
 
 // Own pool so the cache module is self-contained
@@ -141,5 +143,21 @@ export async function invalidatePolicy(id: string): Promise<void> {
       .where(eq(policiesTable.id, id));
   } catch (err) {
     logger.warn({ err }, "[cache] invalidatePolicy error");
+  }
+}
+
+/**
+ * Returns all distinct buyer addresses stored in the cache.
+ * Used by the background sync scheduler to know which buyers to re-sync.
+ */
+export async function getAllBuyers(): Promise<string[]> {
+  try {
+    const rows = await db
+      .selectDistinct({ buyer: policiesTable.buyer })
+      .from(policiesTable);
+    return rows.map((r) => r.buyer);
+  } catch (err) {
+    logger.warn({ err }, "[cache] getAllBuyers error");
+    return [];
   }
 }

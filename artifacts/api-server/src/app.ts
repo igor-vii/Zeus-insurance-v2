@@ -3,6 +3,7 @@ import cors from "cors";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import { startBackgroundSync } from "./lib/background-sync";
 
 const app: Express = express();
 
@@ -51,5 +52,8 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use("/api", router);
+
+// Start the 5-minute background sync scheduler
+startBackgroundSync();
 
 export default app;

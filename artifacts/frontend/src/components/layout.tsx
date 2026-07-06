@@ -5,6 +5,7 @@ import { Shield, LayoutDashboard, FileText, Database, LogOut, Wallet } from "luc
 import { buttonVariants, Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ApiModeToggle } from "@/components/api-mode-toggle";
+import { NetworkGuard } from "@/components/network-guard";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
@@ -26,6 +27,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-screen w-full bg-background text-foreground selection:bg-primary/30">
+      <NetworkGuard />
       {/* Sidebar */}
       <aside className="w-64 border-r border-border bg-card flex flex-col hidden md:flex">
         <div className="p-6">

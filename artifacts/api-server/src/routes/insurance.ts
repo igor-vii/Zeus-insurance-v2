@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { encodeFunctionData, isAddress, parseAbiItem } from "viem";
+import { encodeFunctionData, isAddress } from "viem";
 import { publicClient } from "../lib/chain.js";
 import {
   ZEUS_INSURANCE_ADDRESS,
@@ -12,10 +12,13 @@ import {
 import {
   getCachedPolicies,
   getCachedPolicy,
-  upsertPolicies,
   invalidatePolicy,
-  type CachedPolicy,
 } from "../lib/policy-cache.js";
+import {
+  fetchAndCachePolicies,
+  fetchAndCachePolicy,
+} from "../lib/chain-sync.js";
+import { syncAllBuyers } from "../lib/background-sync.js";
 
 const router = Router();
 
@@ -32,8 +35,7 @@ router.get("/quote", (req, res) => {
     return;
   }
   const { amount, maxRetries } = parsed.data;
-  const amountBigInt = BigInt(amount);
-  const premiumAmount = computePremium(amountBigInt, maxRetries);
+  const premiumAmount = computePremium(BigInt(amount), maxRetries);
   const premiumBps = 700 + (maxRetries - 1) * 200;
   res.json({ premiumBps, premiumAmount: premiumAmount.toString(), totalCost: premiumAmount.toString() });
 });
@@ -65,62 +67,16 @@ router.post("/prepare-buy", (req, res) => {
   res.json({ to: ZEUS_INSURANCE_ADDRESS, data, premiumAmount: premiumAmount.toString() });
 });
 
-// ─── Shared: fetch policies from chain and populate cache ────────────────────
-async function fetchPoliciesFromChain(buyer: string): Promise<CachedPolicy[]> {
-  const logs = await publicClient.getLogs({
-    address: ZEUS_INSURANCE_ADDRESS,
-    event: parseAbiItem(
-      "event PolicyCreated(uint256 indexed policyId, address indexed buyer, address indexed seller, uint256 amount, uint256 premium, uint256 retryDeadline)",
-    ),
-    args: { buyer: buyer as `0x${string}` },
-    fromBlock: 0n,
-  });
-
-  const ids = [
-    ...new Set(
-      logs.map((l) => l.args.policyId).filter((id): id is bigint => id !== undefined),
-    ),
-  ].sort((a, b) => (b > a ? 1 : -1));
-
-  if (ids.length === 0) return [];
-
-  const results = await publicClient.multicall({
-    contracts: ids.map((id) => ({
-      address: ZEUS_INSURANCE_ADDRESS,
-      abi: ZEUS_INSURANCE_ABI,
-      functionName: "getPolicy" as const,
-      args: [id] as const,
-    })),
-  });
-
-  const policies: CachedPolicy[] = [];
-  for (let i = 0; i < ids.length; i++) {
-    const r = results[i];
-    if (r.status !== "success") continue;
-    const p = r.result as {
-      buyer: string; seller: string; amount: bigint; premium: bigint;
-      retryDeadline: bigint; maxRetries: bigint;
-      isActive: boolean; isPaidOut: boolean; isExpired: boolean;
-    };
-    policies.push({
-      id: ids[i].toString(),
-      buyer: p.buyer,
-      seller: p.seller,
-      amount: p.amount.toString(),
-      premium: p.premium.toString(),
-      retryDeadline: p.retryDeadline.toString(),
-      maxRetries: p.maxRetries.toString(),
-      isActive: p.isActive,
-      isPaidOut: p.isPaidOut,
-      isExpired: p.isExpired,
-    });
+// ─── GET /api/policies/sync (manual trigger) ─────────────────────────────────
+router.get("/policies/sync", async (_req, res) => {
+  try {
+    const result = await syncAllBuyers();
+    res.json({ ok: true, ...result });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(502).json({ error: "Sync failed", detail: msg });
   }
-
-  // Fire-and-forget cache write
-  void upsertPolicies(policies);
-
-  return policies;
-}
+});
 
 // ─── GET /api/policies?buyer= ─────────────────────────────────────────────────
 const policiesQuerySchema = z.object({
@@ -135,16 +91,14 @@ router.get("/policies", async (req, res) => {
   }
   const { buyer } = parsed.data;
 
-  // Try cache first
   const cached = await getCachedPolicies(buyer);
   if (cached !== null) {
     res.json({ policies: cached, source: "cache" });
     return;
   }
 
-  // Cache miss or stale — fetch from chain
   try {
-    const policies = await fetchPoliciesFromChain(buyer);
+    const policies = await fetchAndCachePolicies(buyer);
     res.json({ policies, source: "chain" });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -160,40 +114,18 @@ router.get("/policies/:id", async (req, res) => {
     return;
   }
 
-  // Try cache first
   const cached = await getCachedPolicy(idStr);
   if (cached !== null) {
     res.json({ policy: cached, source: "cache" });
     return;
   }
 
-  // Cache miss or stale — fetch from chain
   try {
-    const p = (await publicClient.readContract({
-      address: ZEUS_INSURANCE_ADDRESS,
-      abi: ZEUS_INSURANCE_ABI,
-      functionName: "getPolicy",
-      args: [BigInt(idStr)],
-    })) as {
-      buyer: string; seller: string; amount: bigint; premium: bigint;
-      retryDeadline: bigint; maxRetries: bigint;
-      isActive: boolean; isPaidOut: boolean; isExpired: boolean;
-    };
-
-    const policy: CachedPolicy = {
-      id: idStr,
-      buyer: p.buyer,
-      seller: p.seller,
-      amount: p.amount.toString(),
-      premium: p.premium.toString(),
-      retryDeadline: p.retryDeadline.toString(),
-      maxRetries: p.maxRetries.toString(),
-      isActive: p.isActive,
-      isPaidOut: p.isPaidOut,
-      isExpired: p.isExpired,
-    };
-
-    void upsertPolicies([policy]);
+    const policy = await fetchAndCachePolicy(idStr);
+    if (!policy) {
+      res.status(502).json({ error: "Failed to fetch policy from chain" });
+      return;
+    }
     res.json({ policy, source: "chain" });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -212,7 +144,6 @@ router.post("/claim", async (req, res) => {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
-
   const { policyId } = parsed.data;
 
   const data = encodeFunctionData({
@@ -221,8 +152,7 @@ router.post("/claim", async (req, res) => {
     args: [BigInt(policyId)],
   });
 
-  // Invalidate this policy in cache — the tx will change isPaidOut;
-  // next GET /api/policies will re-sync its status from chain.
+  // Stale the cache entry immediately — isPaidOut will change after the tx
   void invalidatePolicy(policyId);
 
   res.json({ to: ZEUS_INSURANCE_ADDRESS, data });

@@ -58106,48 +58106,18 @@ async function invalidatePolicy(id) {
     logger.warn({ err }, "[cache] invalidatePolicy error");
   }
 }
+async function getAllBuyers() {
+  try {
+    const rows = await db.selectDistinct({ buyer: policiesTable.buyer }).from(policiesTable);
+    return rows.map((r) => r.buyer);
+  } catch (err) {
+    logger.warn({ err }, "[cache] getAllBuyers error");
+    return [];
+  }
+}
 
-// src/routes/insurance.ts
-var router2 = (0, import_express2.Router)();
-var quoteSchema = external_exports.object({
-  amount: external_exports.string().regex(/^\d+$/, "amount must be a non-negative integer string"),
-  maxRetries: external_exports.coerce.number().int().min(1).max(10)
-});
-router2.get("/quote", (req, res) => {
-  const parsed = quoteSchema.safeParse(req.query);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.flatten() });
-    return;
-  }
-  const { amount, maxRetries } = parsed.data;
-  const amountBigInt = BigInt(amount);
-  const premiumAmount = computePremium(amountBigInt, maxRetries);
-  const premiumBps = 700 + (maxRetries - 1) * 200;
-  res.json({ premiumBps, premiumAmount: premiumAmount.toString(), totalCost: premiumAmount.toString() });
-});
-var prepareBuySchema = external_exports.object({
-  seller: external_exports.string().refine(isAddress, "Invalid seller address"),
-  amount: external_exports.string().regex(/^\d+$/, "amount must be a non-negative integer string"),
-  timeoutSeconds: external_exports.coerce.number().int().min(60),
-  maxRetries: external_exports.coerce.number().int().min(1).max(10)
-});
-router2.post("/prepare-buy", (req, res) => {
-  const parsed = prepareBuySchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.flatten() });
-    return;
-  }
-  const { seller, amount, timeoutSeconds, maxRetries } = parsed.data;
-  const amountBigInt = BigInt(amount);
-  const premiumAmount = computePremium(amountBigInt, maxRetries);
-  const data = encodeFunctionData({
-    abi: ZEUS_INSURANCE_ABI,
-    functionName: "buyInsurance",
-    args: [seller, amountBigInt, BigInt(timeoutSeconds), BigInt(maxRetries)]
-  });
-  res.json({ to: ZEUS_INSURANCE_ADDRESS, data, premiumAmount: premiumAmount.toString() });
-});
-async function fetchPoliciesFromChain(buyer) {
+// src/lib/chain-sync.ts
+async function fetchAndCachePolicies(buyer) {
   const logs = await publicClient.getLogs({
     address: ZEUS_INSURANCE_ADDRESS,
     event: parseAbiItem(
@@ -58191,6 +58161,112 @@ async function fetchPoliciesFromChain(buyer) {
   void upsertPolicies(policies);
   return policies;
 }
+async function fetchAndCachePolicy(id) {
+  try {
+    const p = await publicClient.readContract({
+      address: ZEUS_INSURANCE_ADDRESS,
+      abi: ZEUS_INSURANCE_ABI,
+      functionName: "getPolicy",
+      args: [BigInt(id)]
+    });
+    const policy = {
+      id,
+      buyer: p.buyer,
+      seller: p.seller,
+      amount: p.amount.toString(),
+      premium: p.premium.toString(),
+      retryDeadline: p.retryDeadline.toString(),
+      maxRetries: p.maxRetries.toString(),
+      isActive: p.isActive,
+      isPaidOut: p.isPaidOut,
+      isExpired: p.isExpired
+    };
+    void upsertPolicies([policy]);
+    return policy;
+  } catch (err) {
+    logger.warn({ err, id }, "[chain-sync] fetchAndCachePolicy failed");
+    return null;
+  }
+}
+
+// src/lib/background-sync.ts
+var SYNC_INTERVAL_MS = 5 * 60 * 1e3;
+async function syncAllBuyers() {
+  const start = Date.now();
+  const buyers = await getAllBuyers();
+  let synced = 0;
+  let errors = 0;
+  for (const buyer of buyers) {
+    try {
+      await fetchAndCachePolicies(buyer);
+      synced++;
+    } catch (err) {
+      errors++;
+      logger.warn({ err, buyer }, "[bg-sync] failed to sync buyer");
+    }
+  }
+  return { buyers: buyers.length, synced, errors, durationMs: Date.now() - start };
+}
+function startBackgroundSync() {
+  const run = async () => {
+    const result = await syncAllBuyers();
+    if (result.buyers > 0) {
+      logger.info(result, "[bg-sync] cycle complete");
+    }
+  };
+  const interval2 = setInterval(run, SYNC_INTERVAL_MS);
+  interval2.unref();
+  logger.info({ intervalMs: SYNC_INTERVAL_MS }, "[bg-sync] scheduler started");
+}
+
+// src/routes/insurance.ts
+var router2 = (0, import_express2.Router)();
+var quoteSchema = external_exports.object({
+  amount: external_exports.string().regex(/^\d+$/, "amount must be a non-negative integer string"),
+  maxRetries: external_exports.coerce.number().int().min(1).max(10)
+});
+router2.get("/quote", (req, res) => {
+  const parsed = quoteSchema.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  const { amount, maxRetries } = parsed.data;
+  const premiumAmount = computePremium(BigInt(amount), maxRetries);
+  const premiumBps = 700 + (maxRetries - 1) * 200;
+  res.json({ premiumBps, premiumAmount: premiumAmount.toString(), totalCost: premiumAmount.toString() });
+});
+var prepareBuySchema = external_exports.object({
+  seller: external_exports.string().refine(isAddress, "Invalid seller address"),
+  amount: external_exports.string().regex(/^\d+$/, "amount must be a non-negative integer string"),
+  timeoutSeconds: external_exports.coerce.number().int().min(60),
+  maxRetries: external_exports.coerce.number().int().min(1).max(10)
+});
+router2.post("/prepare-buy", (req, res) => {
+  const parsed = prepareBuySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  const { seller, amount, timeoutSeconds, maxRetries } = parsed.data;
+  const amountBigInt = BigInt(amount);
+  const premiumAmount = computePremium(amountBigInt, maxRetries);
+  const data = encodeFunctionData({
+    abi: ZEUS_INSURANCE_ABI,
+    functionName: "buyInsurance",
+    args: [seller, amountBigInt, BigInt(timeoutSeconds), BigInt(maxRetries)]
+  });
+  res.json({ to: ZEUS_INSURANCE_ADDRESS, data, premiumAmount: premiumAmount.toString() });
+});
+router2.get("/policies/sync", async (_req, res) => {
+  try {
+    const result = await syncAllBuyers();
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(502).json({ error: "Sync failed", detail: msg });
+  }
+});
 var policiesQuerySchema = external_exports.object({
   buyer: external_exports.string().refine(isAddress, "Invalid buyer address")
 });
@@ -58207,7 +58283,7 @@ router2.get("/policies", async (req, res) => {
     return;
   }
   try {
-    const policies = await fetchPoliciesFromChain(buyer);
+    const policies = await fetchAndCachePolicies(buyer);
     res.json({ policies, source: "chain" });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -58226,25 +58302,11 @@ router2.get("/policies/:id", async (req, res) => {
     return;
   }
   try {
-    const p = await publicClient.readContract({
-      address: ZEUS_INSURANCE_ADDRESS,
-      abi: ZEUS_INSURANCE_ABI,
-      functionName: "getPolicy",
-      args: [BigInt(idStr)]
-    });
-    const policy = {
-      id: idStr,
-      buyer: p.buyer,
-      seller: p.seller,
-      amount: p.amount.toString(),
-      premium: p.premium.toString(),
-      retryDeadline: p.retryDeadline.toString(),
-      maxRetries: p.maxRetries.toString(),
-      isActive: p.isActive,
-      isPaidOut: p.isPaidOut,
-      isExpired: p.isExpired
-    };
-    void upsertPolicies([policy]);
+    const policy = await fetchAndCachePolicy(idStr);
+    if (!policy) {
+      res.status(502).json({ error: "Failed to fetch policy from chain" });
+      return;
+    }
     res.json({ policy, source: "chain" });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -58348,6 +58410,7 @@ app.use(
 app.use(import_express4.default.json());
 app.use(import_express4.default.urlencoded({ extended: true }));
 app.use("/api", routes_default);
+startBackgroundSync();
 var app_default = app;
 
 // src/index.ts
