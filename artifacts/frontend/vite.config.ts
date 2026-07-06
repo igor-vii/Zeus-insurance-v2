@@ -5,26 +5,20 @@ import { defineConfig } from 'vite';
 
 import runtimeErrorOverlay from '@replit/vite-plugin-runtime-error-modal';
 
-const rawPort = process.env.PORT;
+// Определяем, запущена ли сборка в продакшн-среде (Netlify)
+const isProd = process.env.NODE_ENV === 'production' || process.env.NETLIFY === 'true';
 
-if (!rawPort) {
-  throw new Error(
-    'PORT environment variable is required but was not provided.',
-  );
-}
+// BASE_PATH: для продакшена всегда '/', для разработки — из env или '/'
+const basePath = isProd ? '/' : (process.env.BASE_PATH || '/');
 
-const port = Number(rawPort);
-
-if (Number.isNaN(port) || port <= 0) {
-  throw new Error(`Invalid PORT value: "${rawPort}"`);
-}
-
-const basePath = process.env.BASE_PATH;
-
-if (!basePath) {
-  throw new Error(
-    'BASE_PATH environment variable is required but was not provided.',
-  );
+// PORT: нужен только для разработки
+let port = 5173;
+if (!isProd) {
+  const rawPort = process.env.PORT;
+  if (rawPort) {
+    const parsed = Number(rawPort);
+    if (!isNaN(parsed) && parsed > 0) port = parsed;
+  }
 }
 
 export default defineConfig({
@@ -80,6 +74,11 @@ export default defineConfig({
     },
   },
   preview: {
+    port,
+    host: '0.0.0.0',
+    allowedHosts: true,
+  },
+});
     port,
     host: '0.0.0.0',
     allowedHosts: true,
